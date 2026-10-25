@@ -1,22 +1,19 @@
 # Credit Scoring API
 
-A machine learning service that predicts credit risk (good / bad) for loan applicants. The project covers the full path from exploratory data analysis and model experiments to a containerized REST API deployed on Railway.
-
-**Live API:** https://credit-scoring-api-production-17f6.up.railway.app
-**Swagger UI:** https://credit-scoring-api-production-17f6.up.railway.app/docs
+A machine learning service that predicts credit risk (good / bad) for loan applicants. The project covers the full path from exploratory data analysis and model experiments to a containerized REST API.
 
 ## Overview
 
 The project builds a binary credit scoring model on the German Credit Data (Statlog) dataset, with a focus on **recall for the bad class**. In lending, missing a risky applicant is usually more expensive than rejecting a reliable one, so detecting bad applicants was the main selection criterion.
 
-Several approaches were compared, and a tuned CatBoost model was chosen as the final one. It is served through a FastAPI service, packaged with Docker and deployed on Railway.
+Several approaches were compared, and a tuned CatBoost model was chosen as the final one. It is served through a FastAPI service and packaged with Docker.
 
 ## Pipeline
 
 ```
 EDA → Baseline models → CatBoost → Class weights → Hyperparameter tuning
    → SHAP interpretation → Feature engineering experiments → Final CatBoost model
-   → FastAPI → Docker → Railway
+   → FastAPI → Docker
 ```
 
 ## Dataset
@@ -108,7 +105,7 @@ curl -X POST 'http://127.0.0.1:8000/predict' \
 
 Health check; returns `{"status": "ok"}`.
 
-Interactive documentation is available at `/docs` (Swagger UI), including on the [live deployment](https://credit-scoring-api-production-17f6.up.railway.app/docs).
+Interactive documentation is available at `/docs` (Swagger UI).
 
 ## Project Structure
 
@@ -159,4 +156,4 @@ The tests cover the health check, valid requests, missing and out-of-range field
 
 ## Tech Stack
 
-Python, pandas, scikit-learn, CatBoost, SHAP, FastAPI, Pydantic, pytest, Docker, Railway
+Python, pandas, scikit-learn, CatBoost, SHAP, FastAPI, Pydantic, pytest, Docker
