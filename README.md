@@ -1,192 +1,170 @@
 # Credit Scoring API
 
-ML-сервис для оценки кредитоспособности заёмщика, построенный на German Credit Data — от разведочного анализа данных и экспериментов с моделями до контейнеризированного REST API.
+A machine learning service that predicts credit risk (good / bad) for loan applicants. The project covers the full path from exploratory data analysis and model experiments to a containerized REST API deployed on Railway.
 
 **Live API:** https://credit-scoring-api-production-17f6.up.railway.app
 **Swagger UI:** https://credit-scoring-api-production-17f6.up.railway.app/docs
 
-## Описание
+## Overview
 
-Проект реализует бинарную модель кредитного скоринга с фокусом на **Recall для класса bad**. В кредитном скоринге пропуск рискованного заёмщика может быть более дорогим, чем отказ надёжному клиенту, поэтому качество обнаружения класса bad является одним из ключевых критериев оценки.
+The project builds a binary credit scoring model on the German Credit Data (Statlog) dataset, with a focus on **recall for the bad class**. In lending, missing a risky applicant is usually more expensive than rejecting a reliable one, so detecting bad applicants was the main selection criterion.
 
-Финальная модель — CatBoost, обученная после сравнения с baseline-моделью и последующего гиперпараметрического тюнинга. Модель сохранена и интегрирована в FastAPI-сервис, который предоставляет prediction через REST API.
+Several approaches were compared, and a tuned CatBoost model was chosen as the final one. It is served through a FastAPI service, packaged with Docker and deployed on Railway.
 
-## ML-пайплайн
+## Pipeline
 
 ```
 EDA → Baseline models → CatBoost → Class weights → Hyperparameter tuning
    → SHAP interpretation → Feature engineering experiments → Final CatBoost model
-   → FastAPI → Docker → Railway deployment
+   → FastAPI → Docker → Railway
 ```
 
-## Датасет
+## Dataset
 
-Используется German Credit Data (Statlog):
+German Credit Data (Statlog):
 
-- 1000 заявителей
-- 19 признаков (категориальные и числовые)
-- бинарный target `creditability`: 1 — good, 0 — bad
-- распределение классов: примерно 700 good / 300 bad
+- 1,000 applicants, 19 features (categorical and numerical)
+- binary target `creditability`: 1 = good, 0 = bad
+- roughly 700 good / 300 bad
 
-Колонка `foreign_worker` была удалена на этапе EDA как защищённый атрибут — по соображениям справедливости, а не из-за утечки данных.
+The `foreign_worker` column was dropped during EDA as a protected attribute (a fairness decision, not a data-leakage one).
 
-## Качество моделей
+## Model Performance
 
-Основным критерием при сравнении моделей был Recall для класса bad, дополнительно оценивались Precision и ROC-AUC.
+Models were compared primarily by recall for the bad class, with precision and ROC-AUC as secondary metrics.
 
-| Модель | Recall (bad) | Precision (bad) | ROC-AUC |
+| Model | Recall (bad) | Precision (bad) | ROC-AUC |
 |---|---|---|---|
 | Logistic Regression (baseline, balanced) | 0.77 | 0.54 | 0.8294 |
 | CatBoost (default) | 0.43 | 0.67 | 0.8324 |
 | CatBoost (balanced class weights) | 0.67 | 0.62 | 0.8285 |
 | **CatBoost (tuned, final)** | **0.67** | **0.62** | **0.8335** |
 
-Гиперпараметры CatBoost подбирались с помощью `RandomizedSearchCV`:
-- 5-fold cross-validation
-- 30 итераций
-- оптимизация с учётом выбранной метрики
+Hyperparameters were tuned with `RandomizedSearchCV` (5-fold cross-validation, 30 iterations).
 
-## Интерпретация модели
+## Interpretation
 
-Для интерпретации предсказаний использовался SHAP.
+SHAP analysis shows the strongest predictors are:
 
-Наиболее значимые признаки:
 - `account_balance`
 - `value_savings_stocks`
 - `duration_of_credit_monthly`
 
-Их влияние соответствует бизнес-интуиции кредитного скоринга: финансовое положение клиента и параметры кредита существенно связаны с вероятностью дефолта.
+This matches domain intuition: an applicant's financial position and the loan terms are closely tied to default risk.
 
-Эксперименты с feature engineering, включая удаление слабых по SHAP признаков и добавление ручных взаимодействий, не дали значимого улучшения относительно tuned CatBoost. Это также согласуется со способностью деревьев CatBoost самостоятельно находить нелинейные взаимодействия между признаками.
+Feature engineering experiments (removing weak features by SHAP, adding manual interactions) did not improve on the tuned CatBoost, which is expected since tree models find non-linear interactions on their own.
 
-## REST API
+## API
 
-### POST /predict
+### `POST /predict`
 
-Принимает данные кредитной заявки и возвращает:
-- `creditability` — предсказанный класс
-- `probability_good` — вероятность хорошей кредитоспособности
-- `risk_level` — интерпретированный уровень риска
+Accepts a loan application and returns:
 
-**Пример запроса:**
+- `creditability`: predicted class (1 = good, 0 = bad), using a 0.5 probability threshold
+- `probability_good`: model probability of the good class
+- `risk_level`: `low` (probability ≥ 0.7), `medium` (0.4 to 0.7) or `high` (< 0.4)
+
+The service also computes the derived feature `credit_amount_per_month` (credit amount divided by duration), the same way as during training. Input is validated with Pydantic; invalid or missing fields return `422`.
+
+**Example request:**
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/predict' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "account_balance": 1,
+    "duration_of_credit_monthly": 18,
+    "payment_status_of_previous_credit": 4,
+    "purpose": 2,
+    "credit_amount": 1049,
+    "value_savings_stocks": 1,
+    "length_of_current_employment": 2,
+    "instalment_per_cent": 4,
+    "sex_marital_status": 2,
+    "guarantors": 1,
+    "duration_in_current_address": 4,
+    "most_valuable_available_asset": 2,
+    "age_years": 21,
+    "concurrent_credits": 3,
+    "type_of_apartment": 1,
+    "no_of_credits_at_this_bank": 1,
+    "occupation": 3,
+    "no_of_dependents": 1,
+    "telephone": 1
+  }'
+```
+
+**Example response:**
+
 ```json
 {
-  "account_balance": 1,
-  "duration_of_credit_monthly": 18,
-  "payment_status_of_previous_credit": 4,
-  "purpose": 2,
-  "credit_amount": 1049,
-  "value_savings_stocks": 1,
-  "length_of_current_employment": 2,
-  "instalment_per_cent": 4,
-  "sex_marital_status": 2,
-  "guarantors": 1,
-  "duration_in_current_address": 4,
-  "most_valuable_available_asset": 2,
-  "age_years": 21,
-  "concurrent_credits": 3,
-  "type_of_apartment": 1,
-  "no_of_credits_at_this_bank": 1,
-  "occupation": 3,
-  "no_of_dependents": 1,
-  "telephone": 1
+  "creditability": 0,
+  "probability_good": 0.2242,
+  "risk_level": "high"
 }
 ```
 
-**Пример ответа:**
-```json
-{
-  "creditability": 1,
-  "probability_good": 0.82,
-  "risk_level": "low"
-}
-```
+### `GET /health`
 
-### GET /health
+Health check; returns `{"status": "ok"}`.
 
-Health check для проверки доступности сервиса.
+Interactive documentation is available at `/docs` (Swagger UI), including on the [live deployment](https://credit-scoring-api-production-17f6.up.railway.app/docs).
 
-## Swagger
-
-API имеет автоматически сгенерированную интерактивную документацию FastAPI.
-
-**Live Swagger:** https://credit-scoring-api-production-17f6.up.railway.app/docs
-
-Через Swagger можно отправлять реальные запросы к задеплоенной модели и получать predictions.
-
-## Структура проекта
+## Project Structure
 
 ```text
 credit-scoring-api/
 ├── app/
-│   ├── main.py             # FastAPI-приложение и API endpoints
-│   ├── schemas.py          # Pydantic-модели запросов и ответов
-│   ├── model_loader.py     # Загрузка и кэширование CatBoost-модели
-│   └── config.py           # Конфигурация, пути и параметры модели
-│
+│   ├── main.py             # FastAPI app and endpoints
+│   ├── schemas.py          # Pydantic request/response models
+│   ├── model_loader.py     # CatBoost model loading and caching
+│   └── config.py           # Paths, thresholds, feature order
 ├── data/
-│   ├── raw/                # Исходный датасет
-│   └── processed/          # Обработанные данные
-│
-├── models/
-│   └── *.cbm                # Сохранённая CatBoost-модель
-│
+│   ├── raw/                # Original dataset
+│   └── processed/          # Cleaned dataset
+├── models/                 # Trained CatBoost model (.cbm)
 ├── notebooks/
-│   ├── 01_EDA.ipynb        # EDA
-│   └── 02_modeling.ipynb   # Modeling, tuning и SHAP
-│
+│   ├── 01_EDA.ipynb        # Exploratory data analysis
+│   └── 02_modeling.ipynb   # Baselines, CatBoost, tuning, SHAP
 ├── tests/
-│   └── test_api.py         # API-тесты
-│
+│   └── test_api.py         # API tests
 ├── Dockerfile
 ├── docker-compose.yml
+├── pytest.ini
 └── requirements.txt
 ```
 
-## Запуск локально
+## Running Locally
 
 ```bash
 pip install -r requirements.txt
 python -m app.main
 ```
 
-После запуска:
-- API: `http://127.0.0.1:8000`
-- Swagger: `http://127.0.0.1:8000/docs`
+The API will be available at `http://127.0.0.1:8000`, Swagger UI at `http://127.0.0.1:8000/docs`.
 
-## Запуск через Docker
+## Running with Docker
 
 ```bash
 docker compose up --build
 ```
 
-После запуска API будет доступен на `http://127.0.0.1:8000`, Swagger — на `http://127.0.0.1:8000/docs`.
-
-## Тесты
+## Tests
 
 ```bash
 pytest tests/ -v
 ```
 
-Тесты покрывают:
-- health check
-- валидные запросы
-- невалидные запросы
-- Pydantic validation
-- проверку обязательных полей
-- согласованность `risk_level` с установленными порогами
+The tests cover the health check, valid requests, missing and out-of-range fields (validation errors), and consistency between `risk_level` and the probability thresholds.
 
 ## Deployment
 
-Приложение контейнеризировано с помощью Docker и развёрнуто на Railway.
+The app runs as a Docker container on Railway:
 
 ```
 GitHub → Docker → Railway → FastAPI → CatBoost → /predict
 ```
 
-**Live API:** https://credit-scoring-api-production-17f6.up.railway.app
-**Swagger:** https://credit-scoring-api-production-17f6.up.railway.app/docs
-
-## Технологии
+## Tech Stack
 
 Python, pandas, scikit-learn, CatBoost, SHAP, FastAPI, Pydantic, pytest, Docker, Railway
