@@ -3,3 +3,5 @@ uvicorn[standard]==0.30.6
 pandas==2.2.3
 catboost==1.2.10
 pydantic==2.9.2
+pytest==9.1.1
+httpx==0.28.1
