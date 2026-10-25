@@ -157,14 +157,6 @@ pytest tests/ -v
 
 The tests cover the health check, valid requests, missing and out-of-range fields (validation errors), and consistency between `risk_level` and the probability thresholds.
 
-## Deployment
-
-The app runs as a Docker container on Railway:
-
-```
-GitHub → Docker → Railway → FastAPI → CatBoost → /predict
-```
-
 ## Tech Stack
 
 Python, pandas, scikit-learn, CatBoost, SHAP, FastAPI, Pydantic, pytest, Docker, Railway
